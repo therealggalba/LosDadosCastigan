@@ -1,8 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UserPlus, UserMinus, Play, RotateCcw, Trophy, Flame, Swords, User, Sparkles, ArrowLeft, HelpCircle } from 'lucide-react';
-import { GamePlayer, DiceGameRecord, DicePointsResult } from '@galbahub/domain';
 import styles from './DiceGame.module.scss';
+
+export interface GamePlayer {
+  name: string;
+  color: string;
+  textColor: string;
+  score: number;
+  eliminated: boolean;
+  roundScore: number;
+}
+
+export interface DiceGameRecord {
+  name: string;
+  round: number;
+}
+
+export interface DicePointsResult {
+  points: number;
+  scoringDice: number[];
+  cancelRound: boolean;
+}
 import bgHorizontal from '../assets/LosDadosCastigan_Horizontal_01.png';
 import bgVertical from '../assets/LosDadosCastigan_Vertical_01.png';
 
