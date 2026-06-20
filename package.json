@@ -1,0 +1,30 @@
+{
+  "name": "@galbahub/los-dados-castigan",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "scripts": {
+    "dev": "vite --port 5181",
+    "build": "tsc && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "lucide-react": "^0.359.0",
+    "react-i18next": "^14.0.0",
+    "i18next": "^23.10.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vite": "^5.1.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "sass-embedded": "^1.72.0",
+    "vitest": "^1.3.1",
+    "jsdom": "^24.0.0"
+  }
+}

@@ -1,0 +1,13 @@
+# logs
+*.log
+
+# dependency directories
+node_modules/
+jspm_packages/
+
+# production
+dist/
+
+# misc
+.DS_Store
+.directory
