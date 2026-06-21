@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { UserPlus, UserMinus, Play, RotateCcw, Trophy, Flame, Swords, User, Sparkles, ArrowLeft, HelpCircle } from 'lucide-react';
+import { UserPlus, UserMinus, Play, RotateCcw, Trophy, Swords, User, Sparkles, ArrowLeft, HelpCircle } from 'lucide-react';
 import styles from './DiceGame.module.scss';
 
 export interface GamePlayer {
@@ -24,6 +24,7 @@ export interface DicePointsResult {
 }
 import bgHorizontal from '../assets/LosDadosCastigan_Horizontal_01.png';
 import bgVertical from '../assets/LosDadosCastigan_Vertical_01.png';
+import bgMuerteSubita from '../assets/LosDadosCastigan_MuerteSubita_01.png';
 
 // --- COLOR MATH UTILITIES (Exported for unit testing) ---
 
@@ -233,8 +234,6 @@ const DiceGame: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const activeBg = isMobile ? bgVertical : bgHorizontal;
-
   // Game step
   const [step, setStep] = useState<'setup' | 'game' | 'tiebreaker'>('setup');
 
@@ -278,8 +277,11 @@ const DiceGame: React.FC = () => {
   const [gameOver, setGameOver] = useState(false);
   const [record, setRecord] = useState<DiceGameRecord | null>(null);
   const [newRecordSet, setNewRecordSet] = useState(false);
+  const [gameWinner, setGameWinner] = useState<GamePlayer | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+
+  const activeBg = suddenDeath ? bgMuerteSubita : (isMobile ? bgVertical : bgHorizontal);
 
   // Load record on mount
   useEffect(() => {
@@ -624,6 +626,7 @@ const DiceGame: React.FC = () => {
 
   const declareWinner = (winner: GamePlayer) => {
     setGameOver(true);
+    setGameWinner(winner);
     
     const prevRecord = record;
     if (!prevRecord || roundNumber < prevRecord.round) {
@@ -703,6 +706,7 @@ const DiceGame: React.FC = () => {
     setRoundNumber(1);
     resetTurnState();
     setGameOver(false);
+    setGameWinner(null);
     setTiebreakWinner(null);
     setToastMessage(null);
     setShowExitConfirm(false);
@@ -764,6 +768,21 @@ const DiceGame: React.FC = () => {
           <div className={styles.toastCard}>
             <div className={styles.toastGlow} />
             <span className={styles.toastText}>{toastMessage}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Sudden Death alert banner at top center */}
+      {suddenDeath && !gameOver && (
+        <div className={styles.suddenDeathOverlay}>
+          <div className={styles.suddenDeathCard}>
+            <div className={styles.suddenDeathGlow} />
+            <span className={styles.suddenDeathTitleText}>
+              {t('gameHub.losDadosCastigan.suddenDeathTitle', '¡MUERTE SÚBITA!')}
+            </span>
+            <span className={styles.suddenDeathDescText}>
+              {t('gameHub.losDadosCastigan.suddenDeathDescription', 'Todos los jugadores tienen un último turno para empatar a 3000.')}
+            </span>
           </div>
         </div>
       )}
@@ -1052,6 +1071,16 @@ const DiceGame: React.FC = () => {
                 <span>{t('gameHub.losDadosCastigan.diceToRollCount', 'Dados por lanzar')}: {5 - (allDiceScored ? 0 : savedDice.length)}</span>
               </div>
 
+              {suddenDeath && players[currentPlayerIndex] && (
+                <div className={styles.suddenDeathRequiredPoints}>
+                  <span>
+                    {t('gameHub.losDadosCastigan.pointsNeededNotice', 'Debes conseguir {{needed}} puntos para alcanzar los 3000.', {
+                      needed: 3000 - players[currentPlayerIndex].score
+                    })}
+                  </span>
+                </div>
+              )}
+
               <div className={styles.messageContainer}>
                 <div className={`${styles.actionMessage} ${!message ? styles.hidden : ''}`}>
                   {message || ''}
@@ -1072,19 +1101,6 @@ const DiceGame: React.FC = () => {
                 )}
               </div>
             </div>
-
-            {/* Sudden Death alert banner */}
-            {suddenDeath && !gameOver && (
-              <div className={styles.suddenDeathBanner}>
-                <Flame className={styles.pulseIcon} />
-                <div>
-                  <strong>{t('gameHub.losDadosCastigan.suddenDeathTitle', '¡MUERTE SÚBITA!')}</strong>
-                  <p>
-                    {t('gameHub.losDadosCastigan.suddenDeathDescription', 'Todos los jugadores tienen un último turno para empatar a 3000.')}
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* PANEL 2: ACTIVE PLAY AREA (CENTER COLUMN) */}
@@ -1128,12 +1144,12 @@ const DiceGame: React.FC = () => {
             </div>
 
             {/* Game Over Screen / Declaration */}
-            {gameOver && (
+            {gameOver && gameWinner && (
               <div className={styles.gameOverSection}>
                 <Trophy size={48} className={styles.winnerIcon} />
                 <h2>
                   {t('gameHub.losDadosCastigan.winnerDeclaration', '🏆 ¡{{name}} ha ganado! 🏆', {
-                    name: players[currentPlayerIndex]?.name
+                    name: gameWinner.name
                   })}
                 </h2>
                 

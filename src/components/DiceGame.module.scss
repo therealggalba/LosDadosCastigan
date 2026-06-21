@@ -885,38 +885,82 @@
 
 // --- SUDDEN DEATH ---
 
-.suddenDeathBanner {
-  background: linear-gradient(135deg, rgba(255, 0, 127, 0.2) 0%, rgba(255, 0, 127, 0.05) 100%);
-  border: 1px solid rgba(255, 0, 127, 0.45);
-  border-left: 5px solid #ff007f;
-  padding: 16px;
-  border-radius: 12px;
+.suddenDeathOverlay {
+  position: fixed;
+  top: 15%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 900;
+  pointer-events: none;
   display: flex;
-  gap: 16px;
+  justify-content: center;
   align-items: center;
-  margin-bottom: 20px;
+  width: 90%;
+  max-width: 500px;
+  animation: toastPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.suddenDeathCard {
+  background: rgba(8, 6, 16, 0.95);
+  backdrop-filter: blur(20px);
+  border: 3px solid #ff007f;
+  border-radius: 24px;
+  padding: 16px 28px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8), 0 0 35px rgba(255, 0, 127, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  animation: bounce 1.5s infinite alternate;
+}
+
+.suddenDeathGlow {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 0, 127, 0.3) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.suddenDeathTitleText {
+  color: #ffffff;
+  font-size: 2.0rem;
+  font-weight: 950;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #ffffff 40%, #ff007f 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+}
+
+.suddenDeathDescText {
   color: #ff99cc;
-  animation: bounce 1s infinite alternate;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-top: 8px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
 
-  .pulseIcon {
-    color: #ff007f;
-    width: 32px;
-    height: 32px;
-    flex-shrink: 0;
-    filter: drop-shadow(0 0 6px #ff007f);
-  }
+.suddenDeathRequiredPoints {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 0, 127, 0.12);
+  border: 1px dashed rgba(255, 0, 127, 0.45);
+  border-radius: 8px;
+  text-align: center;
+  box-sizing: border-box;
 
-  strong {
-    font-size: 1.1rem;
-    font-weight: 900;
-    color: #ffffff;
-  }
-
-  p {
-    margin: 4px 0 0 0;
-    font-size: 0.9rem;
-    font-weight: 600;
+  span {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #ff99cc;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   }
 }
 
