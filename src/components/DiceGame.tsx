@@ -883,7 +883,7 @@ const DiceGame: React.FC = () => {
       }
       setPlayers(updatedPlayers);
       setRoundScore(0);
-      setMessage(t('gameHub.losDadosCastigan.cancelRoundMsg', '¡4 o más ★! Tus puntos totales se han reseteado a 0.'));
+      setMessage(t('gameHub.losDadosCastigan.cancelRoundMsg', '¡El diablo!¡Tus puntos totales se han reseteado a 0!.'));
       setIsRolling(false);
       setTimeout(() => {
         proceedToNextPlayer(updatedPlayers);
@@ -894,7 +894,7 @@ const DiceGame: React.FC = () => {
     if (isPunished) {
       gameAudio.playSfx('castigo');
       setRoundScore(0);
-      setMessage(t('gameHub.losDadosCastigan.punishedMsg', 'Los dados castigan. No has obtenido puntuación.'));
+      setMessage(t('gameHub.losDadosCastigan.punishedMsg', 'No has obtenido puntuación.'));
       setIsRolling(false);
       setShowContinue(true);
       return;
@@ -911,7 +911,7 @@ const DiceGame: React.FC = () => {
     setSavedDice(nextSavedDice);
 
     if (nextSavedDice.length === 5) {
-      setMessage(t('gameHub.losDadosCastigan.allScoredMsg', '🎲 ¡Todos los dados han puntuado! Puedes volver a lanzar los 5 dados.'));
+      setMessage(t('gameHub.losDadosCastigan.allScoredMsg', '¡Todos los dados han puntuado! Puedes volver a lanzar los 5 dados.'));
       setAllDiceScored(true);
     } else {
       setAllDiceScored(false);
@@ -962,7 +962,7 @@ const DiceGame: React.FC = () => {
       setSuddenDeathPlayers(remaining);
       setSuddenDeathTiebreakers([]);
 
-      setMessage(`${player.name} ${t('gameHub.losDadosCastigan.suddenDeathBanner', 'ha alcanzado exactamente 3000 puntos. ¡Comienza la muerte súbita!')}`);
+      setMessage(`${player.name} ${t('gameHub.losDadosCastigan.suddenDeathBanner', 'ha alcanzado 3000 puntos. ¡Comienza la muerte súbita!')}`);
       
       setPlayers(updatedPlayers);
       setTimeout(() => {
@@ -1265,9 +1265,9 @@ const DiceGame: React.FC = () => {
             <div className={styles.rulesSection}>
               <h4>{t('gameHub.losDadosCastigan.specialCombosTitle', 'Combinaciones (1ª tirada de 5 dados)')}</h4>
               <ul>
-                <li><strong>3 o más K:</strong> 1000 pts base</li>
-                <li><strong>3 o más Q:</strong> 500 pts base</li>
-                <li><strong>4 o más ★:</strong> ⚠ RESET de puntos (Tus puntos totales acumulados van a 0)</li>
+                <li><strong>3 K:</strong> 1000 pts base</li>
+                <li><strong>3 Q:</strong> 500 pts base</li>
+                <li><strong>4 ★:</strong> ⚠ RESET de puntos (Tus puntos totales acumulados van a 0)</li>
               </ul>
             </div>
 
@@ -1384,7 +1384,7 @@ const DiceGame: React.FC = () => {
 
                       {isLowContrast && (
                         <span className={styles.contrastWarning}>
-                          ⚠ {t('gameHub.losDadosCastigan.lowContrastWarning', 'Contraste insuficiente (mínimo 3.0:1)')}
+                          ⚠ {t('gameHub.losDadosCastigan.lowContrastWarning', 'Contraste insuficiente')}
                         </span>
                       )}
                     </div>
@@ -1438,7 +1438,7 @@ const DiceGame: React.FC = () => {
 
                       {isLowContrast && (
                         <span className={styles.contrastWarning}>
-                          ⚠ {t('gameHub.losDadosCastigan.lowContrastWarning', 'Contraste insuficiente (mínimo 3.0:1)')}
+                          ⚠ {t('gameHub.losDadosCastigan.lowContrastWarning', 'Contraste insuficiente')}
                         </span>
                       )}
                     </div>
@@ -1463,7 +1463,7 @@ const DiceGame: React.FC = () => {
 
               {hasContrastErrors && (
                 <div className={styles.strictContrastError}>
-                  <span>⚠ {t('gameHub.losDadosCastigan.strictContrastError', 'Bloqueado: corrige las combinaciones de bajo contraste para jugar.')}</span>
+                  <span>⚠ {t('gameHub.losDadosCastigan.strictContrastError', 'Bloqueado: corrige las combinaciones de color para jugar.')}</span>
                 </div>
               )}
             </div>
@@ -1605,7 +1605,6 @@ const DiceGame: React.FC = () => {
             {/* Game Over Screen / Declaration */}
             {gameOver && gameWinner && (
               <div className={styles.gameOverSection}>
-                <Trophy size={48} className={styles.winnerIcon} />
                 <h2>
                   {t('gameHub.losDadosCastigan.winnerDeclaration', '🏆 ¡{{name}} ha ganado! 🏆', {
                     name: gameWinner.name
