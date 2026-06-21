@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { UserPlus, UserMinus, Play, RotateCcw, Trophy, Swords, User, Sparkles, ArrowLeft, HelpCircle } from 'lucide-react';
+import { UserPlus, UserMinus, Play, RotateCcw, Trophy, Swords, User, Sparkles, ArrowLeft, HelpCircle, Volume2, VolumeX, Music } from 'lucide-react';
 import styles from './DiceGame.module.scss';
+
+import buenaManoEs from '../assets/audio/buena_mano_es.m4a';
+import buenaManoEn from '../assets/audio/buena_mano_en.m4a';
+import dadosCastiganEs from '../assets/audio/dados_castigan_es.m4a';
+import dadosCastiganEn from '../assets/audio/dados_castigan_en.m4a';
+
 
 export interface GamePlayer {
   name: string;
@@ -69,34 +75,386 @@ export function calculateColorDistance(color1: string, color2: string): number {
 
 // --- VOICE AND AUDIO SERVICE ---
 
-export function playAudioOrSpeak(audioPathBase: string, text: string, lang: string) {
-  const m4aPath = `${audioPathBase}.m4a`;
-  const mp3Path = `${audioPathBase}.mp3`;
+const voiceFiles: Record<string, string> = {
+  'buena_mano_es': buenaManoEs,
+  'buena_mano_en': buenaManoEn,
+  'dados_castigan_es': dadosCastiganEs,
+  'dados_castigan_en': dadosCastiganEn
+};
 
-  const playFile = (path: string, nextFallback: () => void) => {
-    const audio = new Audio(path);
-    audio.play()
-      .then(() => {
-        console.log(`Playing pre-recorded audio: ${path}`);
-      })
-      .catch((err) => {
-        console.warn(`Audio play failed for: ${path}`, err);
-        nextFallback();
-      });
-  };
-
-  // Try M4A, then MP3, then Speech Synthesis fallback
-  playFile(m4aPath, () => {
-    playFile(mp3Path, () => {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel(); // Stop any ongoing speech
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = lang === 'es' ? 'es-ES' : 'en-US';
-        window.speechSynthesis.speak(utterance);
-      }
+export function playAudioOrSpeak(audioKey: string, text: string, lang: string) {
+  const fileUrl = voiceFiles[audioKey];
+  
+  if (!fileUrl) {
+    speakText(text, lang);
+    return;
+  }
+  
+  const audio = new Audio(fileUrl);
+  audio.play()
+    .then(() => {
+      console.log(`Playing voice audio file: ${audioKey}`);
+    })
+    .catch((err) => {
+      console.warn(`Voice audio file play blocked or failed: ${audioKey}`, err);
+      speakText(text, lang);
     });
-  });
 }
+
+function speakText(text: string, lang: string) {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang === 'es' ? 'es-ES' : 'en-US';
+    window.speechSynthesis.speak(utterance);
+  }
+}
+
+// --- WEB AUDIO API MUSIC & SFX SYNTHESIZER ---
+
+class GameAudioEngine {
+  private ctx: AudioContext | null = null;
+  private volumeNode: GainNode | null = null;
+  private sfxVolumeNode: GainNode | null = null;
+  private schedulerInterval: any = null;
+  
+  private bpm = 120;
+  private stepDuration = 0.125; // 16th note duration in seconds (120 BPM -> 120 ms)
+  private nextNoteTime = 0.0;
+  private currentStep = 0;
+  
+  private musicEnabled = false;
+  private sfxEnabled = true;
+  private currentMode: 'menu' | 'game' | 'sudden' | 'off' = 'off';
+
+  public init() {
+    if (this.ctx) return;
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    try {
+      this.ctx = new AudioContextClass();
+      
+      this.volumeNode = this.ctx.createGain();
+      const initialMusicVol = this.musicEnabled ? 0.22 : 0.0;
+      this.volumeNode.gain.setValueAtTime(initialMusicVol, this.ctx.currentTime);
+      this.volumeNode.gain.value = initialMusicVol;
+      this.volumeNode.connect(this.ctx.destination);
+      
+      this.sfxVolumeNode = this.ctx.createGain();
+      const initialSfxVol = this.sfxEnabled ? 0.35 : 0.0;
+      this.sfxVolumeNode.gain.setValueAtTime(initialSfxVol, this.ctx.currentTime);
+      this.sfxVolumeNode.gain.value = initialSfxVol;
+      this.sfxVolumeNode.connect(this.ctx.destination);
+
+      this.startScheduler();
+    } catch (e) {
+      console.error('Failed to initialize AudioContext', e);
+    }
+  }
+
+  public unlock() {
+    this.init();
+    const ctx = this.ctx;
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  }
+
+  public setMusicEnabled(enabled: boolean) {
+    this.musicEnabled = enabled;
+    if (enabled) {
+      this.init();
+      const ctx = this.ctx;
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      if (this.volumeNode) {
+        this.volumeNode.gain.setValueAtTime(0.22, this.ctx?.currentTime || 0);
+        this.volumeNode.gain.value = 0.22;
+      }
+    } else {
+      if (this.volumeNode) {
+        this.volumeNode.gain.setValueAtTime(0, this.ctx?.currentTime || 0);
+        this.volumeNode.gain.value = 0;
+      }
+    }
+  }
+
+  public setSfxEnabled(enabled: boolean) {
+    this.sfxEnabled = enabled;
+    if (enabled) {
+      this.init();
+      const ctx = this.ctx;
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      if (this.sfxVolumeNode) {
+        this.sfxVolumeNode.gain.setValueAtTime(0.35, this.ctx?.currentTime || 0);
+        this.sfxVolumeNode.gain.value = 0.35;
+      }
+    } else {
+      if (this.sfxVolumeNode) {
+        this.sfxVolumeNode.gain.setValueAtTime(0, this.ctx?.currentTime || 0);
+        this.sfxVolumeNode.gain.value = 0;
+      }
+    }
+  }
+
+  public setMode(mode: 'menu' | 'game' | 'sudden' | 'off') {
+    this.currentMode = mode;
+    if (mode !== 'off' && (this.musicEnabled || this.sfxEnabled)) {
+      this.init();
+      const ctx = this.ctx;
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+    }
+    if (mode === 'sudden') {
+      this.bpm = 145;
+      this.stepDuration = 60 / this.bpm / 4; // 16th notes
+    } else {
+      this.bpm = 120;
+      this.stepDuration = 60 / this.bpm / 4;
+    }
+  }
+  
+  private startScheduler() {
+    if (this.schedulerInterval) clearInterval(this.schedulerInterval);
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.nextNoteTime = ctx.currentTime;
+    this.schedulerInterval = setInterval(() => {
+      const activeCtx = this.ctx;
+      if (!activeCtx) return;
+      
+      // Reset scheduling time if we fell behind (e.g. context was suspended)
+      if (this.nextNoteTime < activeCtx.currentTime) {
+        this.nextNoteTime = activeCtx.currentTime + 0.05;
+      }
+      
+      while (this.nextNoteTime < activeCtx.currentTime + 0.1) {
+        this.scheduleNote(this.currentStep, this.nextNoteTime);
+        this.advanceStep();
+      }
+    }, 25);
+  }
+  
+  private advanceStep() {
+    this.currentStep = (this.currentStep + 1) % 32; // 2 bars of 16 steps
+    this.nextNoteTime += this.stepDuration;
+  }
+  
+  private scheduleNote(step: number, time: number) {
+    const ctx = this.ctx;
+    if (!this.musicEnabled || !ctx || this.currentMode === 'off') return;
+    
+    if (this.currentMode === 'menu') {
+      // Menu: slow ambient chords on sine wave
+      const chordIndex = Math.floor(step / 8);
+      const stepInChord = step % 8;
+      
+      const chords = [
+        [261.63, 329.63, 392.00, 493.88], // Cmaj7 (C4, E4, G4, B4)
+        [220.00, 261.63, 329.63, 392.00], // Am7 (A3, C4, E4, G4)
+        [174.61, 220.00, 261.63, 329.63], // Fmaj7 (F3, A3, C4, E4)
+        [196.00, 246.94, 293.66, 349.23], // G7 (G3, B3, D4, F4)
+      ];
+      
+      const currentChord = chords[chordIndex] || chords[0];
+      
+      if (stepInChord === 0 || stepInChord === 2 || stepInChord === 4 || stepInChord === 6) {
+        const note = currentChord[stepInChord / 2];
+        this.playSynthTone(note, time, 0.35, 'sine', 0.05, 0.4);
+      }
+    } else if (this.currentMode === 'game') {
+      // Game: cheerful walking bassline + simple lead arpeggio
+      const chordIndex = Math.floor(step / 8);
+      const stepInChord = step % 8;
+      
+      const roots = [130.81, 110.00, 87.31, 98.00]; // C3, A2, F2, G2
+      const thirds = [164.81, 130.81, 110.00, 123.47]; // E3, C3, A2, B2
+      const fifths = [196.00, 164.81, 130.81, 146.83]; // G3, E3, C3, D3
+      
+      if (stepInChord === 0) {
+        this.playSynthTone(roots[chordIndex], time, 0.4, 'triangle', 0.01, 0.15);
+      } else if (stepInChord === 2) {
+        this.playSynthTone(thirds[chordIndex], time, 0.3, 'triangle', 0.01, 0.12);
+      } else if (stepInChord === 4) {
+        this.playSynthTone(fifths[chordIndex], time, 0.4, 'triangle', 0.01, 0.15);
+      } else if (stepInChord === 6) {
+        this.playSynthTone(thirds[chordIndex], time, 0.3, 'triangle', 0.01, 0.12);
+      }
+      
+      const melody = [
+        392.00, 0, 440.00, 392.00, 0, 523.25, 0, 493.88,
+        392.00, 0, 440.00, 392.00, 0, 587.33, 0, 523.25
+      ];
+      const leadNote = melody[step % 16];
+      if (leadNote > 0 && step % 4 !== 1) {
+        this.playSynthTone(leadNote, time, 0.07, 'sine', 0.01, 0.1);
+      }
+    } else if (this.currentMode === 'sudden') {
+      // Sudden Death: fast, intense minor-key theme
+      const stepInChord = step % 8;
+      
+      const bassNote = stepInChord % 2 === 0 ? 55.00 : 110.00; // A1 / A2
+      this.playSynthTone(bassNote, time, 0.45, 'sawtooth', 0.01, 0.08, 120);
+      
+      if (stepInChord === 0) {
+        this.playSynthTone(880.00, time, 0.1, 'square', 0.005, 0.15);
+      } else if (stepInChord === 4) {
+        this.playSynthTone(830.61, time, 0.1, 'square', 0.005, 0.15);
+      }
+    }
+  }
+  
+  private playSynthTone(freq: number, time: number, vol: number, type: OscillatorType, attack: number, decay: number, filterFreq?: number) {
+    const ctx = this.ctx;
+    const volumeNode = this.volumeNode;
+    if (!ctx || !volumeNode) return;
+    
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, time);
+    
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(vol, time + attack);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + attack + decay);
+    
+    if (filterFreq) {
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(filterFreq, time);
+      osc.connect(filter);
+      filter.connect(gain);
+    } else {
+      osc.connect(gain);
+    }
+    
+    gain.connect(volumeNode);
+    
+    osc.start(time);
+    osc.stop(time + attack + decay + 0.1);
+  }
+
+  public playSfx(type: 'click' | 'roll' | 'success' | 'castigo' | 'winner') {
+    if (!this.sfxEnabled) return;
+    this.init();
+    const ctx = this.ctx;
+    const sfxVolumeNode = this.sfxVolumeNode;
+    if (!ctx || !sfxVolumeNode) return;
+    
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    
+    const now = ctx.currentTime;
+    
+    switch (type) {
+      case 'click': {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(sfxVolumeNode);
+        
+        osc.frequency.setValueAtTime(1000, now);
+        osc.frequency.exponentialRampToValueAtTime(100, now + 0.03);
+        
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.03);
+        
+        osc.start(now);
+        osc.stop(now + 0.04);
+        break;
+      }
+      case 'roll': {
+        const duration = 0.5;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.connect(gain);
+        gain.connect(sfxVolumeNode);
+        
+        for (let i = 0; i < 8; i++) {
+          const t = now + (i * duration) / 8;
+          osc.frequency.setValueAtTime(70 + Math.random() * 60, t);
+          gain.gain.setValueAtTime(0.25, t);
+          gain.gain.exponentialRampToValueAtTime(0.01, t + 0.04);
+        }
+        osc.start(now);
+        osc.stop(now + duration + 0.05);
+        break;
+      }
+      case 'success': {
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25];
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.connect(gain);
+          gain.connect(sfxVolumeNode);
+          
+          const start = now + idx * 0.07;
+          osc.frequency.setValueAtTime(freq, start);
+          gain.gain.setValueAtTime(0.2, start);
+          gain.gain.exponentialRampToValueAtTime(0.01, start + 0.15);
+          
+          osc.start(start);
+          osc.stop(start + 0.2);
+        });
+        break;
+      }
+      case 'castigo': {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.connect(gain);
+        gain.connect(sfxVolumeNode);
+        
+        osc.frequency.setValueAtTime(140, now);
+        osc.frequency.linearRampToValueAtTime(45, now + 0.65);
+        
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.65);
+        
+        osc.start(now);
+        osc.stop(now + 0.7);
+        break;
+      }
+      case 'winner': {
+        const melody = [
+          { f: 261.63, d: 0.12 },
+          { f: 329.63, d: 0.12 },
+          { f: 392.00, d: 0.12 },
+          { f: 523.25, d: 0.24 },
+          { f: 392.00, d: 0.12 },
+          { f: 523.25, d: 0.48 }
+        ];
+        let cumulativeTime = now;
+        melody.forEach((note) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'square';
+          osc.connect(gain);
+          gain.connect(sfxVolumeNode);
+          
+          osc.frequency.setValueAtTime(note.f, cumulativeTime);
+          gain.gain.setValueAtTime(0.12, cumulativeTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, cumulativeTime + note.d);
+          
+          osc.start(cumulativeTime);
+          osc.stop(cumulativeTime + note.d + 0.05);
+          cumulativeTime += note.d;
+        });
+        break;
+      }
+    }
+  }
+}
+
+export const gameAudio = new GameAudioEngine();
 
 // --- DICE POINTS LOGIC ---
 
@@ -283,6 +641,43 @@ const DiceGame: React.FC = () => {
 
   const activeBg = suddenDeath ? bgMuerteSubita : (isMobile ? bgVertical : bgHorizontal);
 
+  const [musicMuted, setMusicMuted] = useState(() => {
+    return localStorage.getItem('music_muted') === 'true';
+  });
+  const [sfxMuted, setSfxMuted] = useState(() => {
+    return localStorage.getItem('sfx_muted') === 'true';
+  });
+
+  // Unlock Audio Helper on click
+  const unlockAudio = () => {
+    gameAudio.unlock();
+  };
+
+  // Sync music state
+  useEffect(() => {
+    gameAudio.setMusicEnabled(!musicMuted);
+    localStorage.setItem('music_muted', String(musicMuted));
+  }, [musicMuted]);
+
+  // Sync sfx state
+  useEffect(() => {
+    gameAudio.setSfxEnabled(!sfxMuted);
+    localStorage.setItem('sfx_muted', String(sfxMuted));
+  }, [sfxMuted]);
+
+  // Automatic music mode selector
+  useEffect(() => {
+    if (step === 'setup') {
+      gameAudio.setMode('menu');
+    } else if (gameOver) {
+      gameAudio.setMode('off');
+    } else if (suddenDeath) {
+      gameAudio.setMode('sudden');
+    } else {
+      gameAudio.setMode('game');
+    }
+  }, [step, suddenDeath, gameOver]);
+
   // Load record on mount
   useEffect(() => {
     const savedRecord = localStorage.getItem('dice_game_record');
@@ -306,6 +701,7 @@ const DiceGame: React.FC = () => {
   }, [toastMessage]);
 
   const handleAddPlayer = () => {
+    gameAudio.playSfx('click');
     if (setupPlayers.length < 8) {
       const presets = [
         { color: '#7C3AED', textColor: '#FFFFFF' }, // Indigo Violet
@@ -319,6 +715,7 @@ const DiceGame: React.FC = () => {
   };
 
   const handleRemovePlayer = () => {
+    gameAudio.playSfx('click');
     if (setupPlayers.length > 4) {
       setSetupPlayers(setupPlayers.slice(0, -1));
     }
@@ -372,6 +769,8 @@ const DiceGame: React.FC = () => {
 
   const startGame = () => {
     if (hasContrastErrors) return; // Strict guard
+    unlockAudio();
+    gameAudio.playSfx('click');
 
     const validPlayers: GamePlayer[] = setupPlayers.map((p, i) => {
       return {
@@ -409,6 +808,8 @@ const DiceGame: React.FC = () => {
 
   const rollDice = () => {
     if (gameOver || isRolling) return;
+    unlockAudio();
+    gameAudio.playSfx('roll');
 
     setIsRolling(true);
     setMessage('');
@@ -469,11 +870,12 @@ const DiceGame: React.FC = () => {
       const toastContent = matchedTrigger[activeLang];
       setToastMessage(toastContent.text);
       
-      const audioPathBase = `/audio/${matchedTrigger.audioFile}_${activeLang}`;
-      playAudioOrSpeak(audioPathBase, toastContent.voiceText, activeLang);
+      const audioKey = `${matchedTrigger.audioFile}_${activeLang}`;
+      playAudioOrSpeak(audioKey, toastContent.voiceText, activeLang);
     }
 
     if (result.cancelRound) {
+      gameAudio.playSfx('castigo');
       const updatedPlayers = [...players];
       if (updatedPlayers[currentPlayerIndex]) {
         updatedPlayers[currentPlayerIndex].score = 0;
@@ -490,11 +892,16 @@ const DiceGame: React.FC = () => {
     }
 
     if (isPunished) {
+      gameAudio.playSfx('castigo');
       setRoundScore(0);
       setMessage(t('gameHub.losDadosCastigan.punishedMsg', 'Los dados castigan. No has obtenido puntuación.'));
       setIsRolling(false);
       setShowContinue(true);
       return;
+    }
+
+    if (result.points > 0) {
+      gameAudio.playSfx('success');
     }
 
     const nextRoundScore = roundScore + result.points;
@@ -518,10 +925,14 @@ const DiceGame: React.FC = () => {
   };
 
   const handlePlantarse = () => {
+    unlockAudio();
+    gameAudio.playSfx('success');
     endTurn(roundScore);
   };
 
   const handleContinuePunishment = () => {
+    unlockAudio();
+    gameAudio.playSfx('click');
     setShowContinue(false);
     endTurn(0);
   };
@@ -535,6 +946,7 @@ const DiceGame: React.FC = () => {
 
     // Check bust (> 3000)
     if (player.score > 3000) {
+      gameAudio.playSfx('castigo');
       player.score -= finalRoundScore;
       player.roundScore = 0;
       setMessage(t('gameHub.losDadosCastigan.bustMsg', '¡Has superado los 3000 puntos! Tu puntuación vuelve a la ronda anterior.'));
@@ -625,6 +1037,7 @@ const DiceGame: React.FC = () => {
   };
 
   const declareWinner = (winner: GamePlayer) => {
+    gameAudio.playSfx('winner');
     setGameOver(true);
     setGameWinner(winner);
     
@@ -650,6 +1063,8 @@ const DiceGame: React.FC = () => {
 
   const rollTiebreaker = () => {
     if (isRolling) return;
+    unlockAudio();
+    gameAudio.playSfx('roll');
 
     setIsRolling(true);
     const player = tiebreakQueue[currentTiebreakIndex];
@@ -700,6 +1115,7 @@ const DiceGame: React.FC = () => {
   };
 
   const resetGame = () => {
+    gameAudio.playSfx('click');
     setStep('setup');
     setPlayers([]);
     setCurrentPlayerIndex(0);
@@ -711,6 +1127,10 @@ const DiceGame: React.FC = () => {
     setToastMessage(null);
     setShowExitConfirm(false);
     setShowHelp(false);
+    setSuddenDeath(false);
+    setSuddenDeathTrigger(null);
+    setSuddenDeathPlayers([]);
+    setSuddenDeathTiebreakers([]);
   };
 
   const renderDieFace = (val: number) => {
@@ -762,6 +1182,45 @@ const DiceGame: React.FC = () => {
 
   return (
     <div className={styles.container} style={{ backgroundImage: `url(${activeBg})` }}>
+      {/* TOP ACTIONS ROW (Sound/Music controls + Help) */}
+      <div className={styles.topActionsRow}>
+        <button 
+          onClick={() => {
+            unlockAudio();
+            setMusicMuted(!musicMuted);
+          }} 
+          className={`${styles.actionIconButton} ${musicMuted ? styles.muted : ''}`}
+          title={musicMuted ? "Activar música" : "Mutear música"}
+        >
+          {musicMuted ? <Music size={18} style={{ opacity: 0.5 }} /> : <Music size={18} />}
+        </button>
+        <button 
+          onClick={() => {
+            unlockAudio();
+            setSfxMuted(!sfxMuted);
+            if (sfxMuted) {
+              gameAudio.setSfxEnabled(true);
+              gameAudio.playSfx('click');
+            }
+          }} 
+          className={`${styles.actionIconButton} ${sfxMuted ? styles.muted : ''}`}
+          title={sfxMuted ? "Activar sonido" : "Mutear sonido"}
+        >
+          {sfxMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+        </button>
+        <button 
+          onClick={() => {
+            unlockAudio();
+            gameAudio.playSfx('click');
+            setShowHelp(!showHelp);
+          }} 
+          className={styles.actionIconButton}
+          title={t('gameHub.losDadosCastigan.helpTitle', 'Instrucciones')}
+        >
+          <HelpCircle size={18} />
+        </button>
+      </div>
+
       {/* TOAST POPUP NOTIFICATION */}
       {toastMessage && (
         <div className={styles.toastOverlay}>
@@ -787,13 +1246,53 @@ const DiceGame: React.FC = () => {
         </div>
       )}
 
+      {/* HELP POPUP (ALWAYS AVAILABLE) */}
+      {showHelp && (
+        <>
+          <div className={styles.helpBackdrop} onClick={() => setShowHelp(false)} />
+          <div className={styles.helpPopup}>
+            <h3>{t('gameHub.losDadosCastigan.rulesTitle', 'Reglas del Juego')}</h3>
+            
+            <div className={styles.rulesSection}>
+              <h4>{t('gameHub.losDadosCastigan.cardScoresTitle', 'Puntuación de Cartas')}</h4>
+              <ul>
+                <li><strong>K:</strong> 100 pts</li>
+                <li><strong>Q:</strong> 50 pts</li>
+                <li><strong>★, 9, 10, J:</strong> 0 pts</li>
+              </ul>
+            </div>
+
+            <div className={styles.rulesSection}>
+              <h4>{t('gameHub.losDadosCastigan.specialCombosTitle', 'Combinaciones (1ª tirada de 5 dados)')}</h4>
+              <ul>
+                <li><strong>3 o más K:</strong> 1000 pts base</li>
+                <li><strong>3 o más Q:</strong> 500 pts base</li>
+                <li><strong>4 o más ★:</strong> ⚠ RESET de puntos (Tus puntos totales acumulados van a 0)</li>
+              </ul>
+            </div>
+
+            <div className={styles.rulesSection}>
+              <h4>{t('gameHub.losDadosCastigan.gameplayRulesTitle', 'Reglas de Juego')}</h4>
+              <ul>
+                <li><strong>Plantarse:</strong> Solo con acumulados múltiplos de 100.</li>
+                <li><strong>¡Los dados castigan!:</strong> Si tiras y no sale ninguna K o Q, pierdes el acumulado del turno.</li>
+              </ul>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* EXIT GAME CONFIRMATION BUTTON */}
       {(step === 'game' || step === 'tiebreaker') && (
         <>
           {!showExitConfirm ? (
             <button
               className={styles.exitBtn}
-              onClick={() => setShowExitConfirm(true)}
+              onClick={() => {
+                unlockAudio();
+                gameAudio.playSfx('click');
+                setShowExitConfirm(true);
+              }}
               title={t('gameHub.losDadosCastigan.exitGame', 'Volver al menú')}
             >
               <ArrowLeft size={18} />
@@ -806,54 +1305,14 @@ const DiceGame: React.FC = () => {
               <button className={styles.exitConfirmYes} onClick={resetGame}>
                 {t('common.yes', 'Sí')}
               </button>
-              <button className={styles.exitConfirmNo} onClick={() => setShowExitConfirm(false)}>
+              <button className={styles.exitConfirmNo} onClick={() => {
+                unlockAudio();
+                gameAudio.playSfx('click');
+                setShowExitConfirm(false);
+              }}>
                 {t('common.no', 'No')}
               </button>
             </div>
-          )}
-
-          {/* HELP BUTTON AND POPUP */}
-          <button
-            className={styles.helpBtn}
-            onClick={() => setShowHelp(!showHelp)}
-            title={t('gameHub.losDadosCastigan.helpTitle', 'Instrucciones')}
-          >
-            <HelpCircle size={18} />
-          </button>
-
-          {showHelp && (
-            <>
-              <div className={styles.helpBackdrop} onClick={() => setShowHelp(false)} />
-              <div className={styles.helpPopup}>
-                <h3>{t('gameHub.losDadosCastigan.rulesTitle', 'Reglas del Juego')}</h3>
-                
-                <div className={styles.rulesSection}>
-                  <h4>{t('gameHub.losDadosCastigan.cardScoresTitle', 'Puntuación de Cartas')}</h4>
-                  <ul>
-                    <li><strong>K:</strong> 100 pts</li>
-                    <li><strong>Q:</strong> 50 pts</li>
-                    <li><strong>★, 9, 10, J:</strong> 0 pts</li>
-                  </ul>
-                </div>
-
-                <div className={styles.rulesSection}>
-                  <h4>{t('gameHub.losDadosCastigan.specialCombosTitle', 'Combinaciones (1ª tirada de 5 dados)')}</h4>
-                  <ul>
-                    <li><strong>3 o más K:</strong> 1000 pts base</li>
-                    <li><strong>3 o más Q:</strong> 500 pts base</li>
-                    <li><strong>4 o más ★:</strong> ⚠ RESET de puntos (Tus puntos totales acumulados van a 0)</li>
-                  </ul>
-                </div>
-
-                <div className={styles.rulesSection}>
-                  <h4>{t('gameHub.losDadosCastigan.gameplayRulesTitle', 'Reglas de Juego')}</h4>
-                  <ul>
-                    <li><strong>Plantarse:</strong> Solo con acumulados múltiplos de 100.</li>
-                    <li><strong>¡Los dados castigan!:</strong> Si tiras y no sale ninguna K o Q, pierdes el acumulado del turno.</li>
-                  </ul>
-                </div>
-              </div>
-            </>
           )}
         </>
       )}
