@@ -10,6 +10,18 @@ i18n.use(initReactI18next).init({
     es: {
       translation: {
         // Teclas locales básicas para que no falle el renderizado independiente
+        "common": {
+          "player": "Jugador",
+          "aiPlayer": "IA"
+        },
+        "gameHub": {
+          "losDadosCastigan": {
+            "playerTypeHuman": "Humano",
+            "playerTypeAi": "IA",
+            "playerLabel": "Jugador",
+            "aiLabel": "IA"
+          }
+        }
       }
     }
   },

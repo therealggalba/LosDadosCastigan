@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { UserPlus, UserMinus, Play, RotateCcw, Trophy, Swords, User, Sparkles, ArrowLeft, HelpCircle, Volume2, VolumeX, Music } from 'lucide-react';
+import { UserPlus, UserMinus, Play, RotateCcw, Trophy, Swords, User, Sparkles, ArrowLeft, HelpCircle, Volume2, VolumeX, Music, Cpu } from 'lucide-react';
 import styles from './DiceGame.module.scss';
 
 import buenaManoEs from '../assets/audio/buena_mano_es.m4a';
@@ -16,6 +16,7 @@ export interface GamePlayer {
   score: number;
   eliminated: boolean;
   roundScore: number;
+  isAi: boolean;
 }
 
 export interface DiceGameRecord {
@@ -596,11 +597,11 @@ const DiceGame: React.FC = () => {
   const [step, setStep] = useState<'setup' | 'game' | 'tiebreaker'>('setup');
 
   // Player configurations (Custom BG and Text colors)
-  const [setupPlayers, setSetupPlayers] = useState<Array<{ name: string; color: string; textColor: string }>>([
-    { name: '', color: '#E11D48', textColor: '#FFFFFF' }, // Ruby Pink
-    { name: '', color: '#2563EB', textColor: '#FFFFFF' }, // Royal Blue
-    { name: '', color: '#16A34A', textColor: '#FFFFFF' }, // Emerald Green
-    { name: '', color: '#EAB308', textColor: '#000000' }  // Golden Yellow
+  const [setupPlayers, setSetupPlayers] = useState<Array<{ name: string; color: string; textColor: string; isAi: boolean }>>([
+    { name: '', color: '#E11D48', textColor: '#FFFFFF', isAi: false }, // Ruby Pink
+    { name: '', color: '#2563EB', textColor: '#FFFFFF', isAi: true }, // Royal Blue
+    { name: '', color: '#16A34A', textColor: '#FFFFFF', isAi: true }, // Emerald Green
+    { name: '', color: '#EAB308', textColor: '#000000', isAi: true }  // Golden Yellow
   ]);
 
   // Main game state
@@ -700,6 +701,82 @@ const DiceGame: React.FC = () => {
     }
   }, [toastMessage]);
 
+  // IA Autoplay Engine
+  useEffect(() => {
+    if (gameOver || isRolling) return;
+
+    if (step === 'game') {
+      const currentPlayer = players[currentPlayerIndex];
+      if (!currentPlayer || !currentPlayer.isAi) return;
+
+      let action: (() => void) | null = null;
+
+      if (showContinue) {
+        action = handleContinuePunishment;
+      } else if (showPlantarse) {
+        if (suddenDeath) {
+          // In sudden death, IA must reach exactly 3000 to avoid elimination.
+          if (currentPlayer.score + roundScore >= 3000) {
+            action = handlePlantarse;
+          } else {
+            action = rollDice;
+          }
+        } else {
+          // Conservative strategy: stand (plantarse) if roundScore >= 200 (with 90% probability)
+          if (roundScore >= 200) {
+            // Roll a 90% chance to stand
+            if (Math.random() < 0.90) {
+              action = handlePlantarse;
+            } else {
+              action = rollDice;
+            }
+          } else {
+            action = rollDice;
+          }
+        }
+      } else if (diceValues.length > 0) {
+        // Must roll again because score is not a multiple of 100
+        action = rollDice;
+      } else {
+        // Start of turn
+        action = rollDice;
+      }
+
+      if (action) {
+        const timer = setTimeout(() => {
+          if (!gameOver && !isRolling) {
+            action!();
+          }
+        }, 1500);
+        return () => clearTimeout(timer);
+      }
+    } else if (step === 'tiebreaker') {
+      const currentPlayer = tiebreakQueue[currentTiebreakIndex];
+      if (currentPlayer && currentPlayer.isAi) {
+        const timer = setTimeout(() => {
+          if (!gameOver && !isRolling) {
+            rollTiebreaker();
+          }
+        }, 1500);
+        return () => clearTimeout(timer);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    step,
+    currentPlayerIndex,
+    players,
+    isRolling,
+    showPlantarse,
+    showContinue,
+    diceValues.length,
+    suddenDeath,
+    roundScore,
+    gameOver,
+    tiebreakQueue,
+    currentTiebreakIndex
+  ]);
+
   const handleAddPlayer = () => {
     gameAudio.playSfx('click');
     if (setupPlayers.length < 8) {
@@ -710,7 +787,7 @@ const DiceGame: React.FC = () => {
         { color: '#DB2777', textColor: '#FFFFFF' }  // Neon Pink
       ];
       const preset = presets[(setupPlayers.length - 4) % presets.length];
-      setSetupPlayers([...setupPlayers, { name: '', color: preset.color, textColor: preset.textColor }]);
+      setSetupPlayers([...setupPlayers, { name: '', color: preset.color, textColor: preset.textColor, isAi: true }]);
     }
   };
 
@@ -739,6 +816,13 @@ const DiceGame: React.FC = () => {
     setSetupPlayers(newPlayers);
   };
 
+  const handleSetupAiToggle = (index: number, isAi: boolean) => {
+    gameAudio.playSfx('click');
+    const newPlayers = [...setupPlayers];
+    newPlayers[index].isAi = isAi;
+    setSetupPlayers(newPlayers);
+  };
+
   // Compare background colors of all players to find similarities
   const getColorConflicts = () => {
     const conflicts: string[] = [];
@@ -746,8 +830,14 @@ const DiceGame: React.FC = () => {
       for (let j = i + 1; j < setupPlayers.length; j++) {
         const dist = calculateColorDistance(setupPlayers[i].color, setupPlayers[j].color);
         if (dist < 75) {
-          const nameI = setupPlayers[i].name.trim() || `${t('common.player', 'Jugador')} ${i + 1}`;
-          const nameJ = setupPlayers[j].name.trim() || `${t('common.player', 'Jugador')} ${j + 1}`;
+          const defaultNameI = setupPlayers[i].isAi 
+            ? `${t('common.aiPlayer', 'IA')} ${i + 1}` 
+            : `${t('common.player', 'Jugador')} ${i + 1}`;
+          const defaultNameJ = setupPlayers[j].isAi 
+            ? `${t('common.aiPlayer', 'IA')} ${j + 1}` 
+            : `${t('common.player', 'Jugador')} ${j + 1}`;
+          const nameI = setupPlayers[i].name.trim() || defaultNameI;
+          const nameJ = setupPlayers[j].name.trim() || defaultNameJ;
           conflicts.push(
             t('gameHub.losDadosCastigan.similarColorWarning', {
               player1: nameI,
@@ -773,13 +863,17 @@ const DiceGame: React.FC = () => {
     gameAudio.playSfx('click');
 
     const validPlayers: GamePlayer[] = setupPlayers.map((p, i) => {
+      const defaultName = p.isAi 
+        ? `${t('common.aiPlayer', 'IA')} ${i + 1}` 
+        : `${t('common.player', 'Jugador')} ${i + 1}`;
       return {
-        name: p.name.trim() || `Jugador ${i + 1}`,
+        name: p.name.trim() || defaultName,
         color: p.color,
         textColor: p.textColor,
         score: 0,
         eliminated: false,
-        roundScore: 0
+        roundScore: 0,
+        isAi: p.isAi
       };
     });
 
@@ -1038,8 +1132,9 @@ const DiceGame: React.FC = () => {
     } else if (tiebreakers.length === 1) {
       declareWinner(tiebreakers[0]);
     } else {
-      // Tiebreak only between the players who got 3000 during sudden death (excluding the trigger)
-      startTiebreaker(tiebreakers);
+      // If 2 or more players reach 3000 during sudden death, they tie with each other
+      // AND with the player who closed the game (trigger). So we run a 3+ way tiebreaker.
+      startTiebreaker([trigger, ...tiebreakers]);
     }
   };
 
@@ -1244,7 +1339,7 @@ const DiceGame: React.FC = () => {
       )}
 
       {/* Sudden Death alert banner at top center */}
-      {suddenDeath && !gameOver && (
+      {suddenDeath && !gameOver && step === 'game' && (
         <div className={styles.suddenDeathOverlay}>
           <div className={styles.suddenDeathCard}>
             <div className={styles.suddenDeathGlow} />
@@ -1371,6 +1466,26 @@ const DiceGame: React.FC = () => {
                     <div key={idx} className={styles.playerInputRow}>
                       <div className={styles.playerHeaderCompact}>
                         <span>{t('common.player', 'Jugador')} {idx + 1}</span>
+                        <div className={styles.toggleGroup}>
+                          <button
+                            type="button"
+                            className={`${styles.toggleBtn} ${!player.isAi ? styles.active : ''}`}
+                            onClick={() => handleSetupAiToggle(idx, false)}
+                            title={t('gameHub.losDadosCastigan.playerTypeHuman', 'Humano')}
+                          >
+                            <User size={12} />
+                            <span>{t('gameHub.losDadosCastigan.playerLabel', 'Jugador')}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.toggleBtn} ${player.isAi ? styles.active : ''}`}
+                            onClick={() => handleSetupAiToggle(idx, true)}
+                            title={t('gameHub.losDadosCastigan.playerTypeAi', 'IA')}
+                          >
+                            <Cpu size={12} />
+                            <span>{t('gameHub.losDadosCastigan.aiLabel', 'IA')}</span>
+                          </button>
+                        </div>
                       </div>
                       
                       <div className={styles.playerFieldsRow}>
@@ -1425,6 +1540,26 @@ const DiceGame: React.FC = () => {
                     <div key={idx} className={styles.playerInputRow}>
                       <div className={styles.playerHeaderCompact}>
                         <span>{t('common.player', 'Jugador')} {idx + 1}</span>
+                        <div className={styles.toggleGroup}>
+                          <button
+                            type="button"
+                            className={`${styles.toggleBtn} ${!player.isAi ? styles.active : ''}`}
+                            onClick={() => handleSetupAiToggle(idx, false)}
+                            title={t('gameHub.losDadosCastigan.playerTypeHuman', 'Humano')}
+                          >
+                            <User size={12} />
+                            <span>{t('gameHub.losDadosCastigan.playerLabel', 'Jugador')}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.toggleBtn} ${player.isAi ? styles.active : ''}`}
+                            onClick={() => handleSetupAiToggle(idx, true)}
+                            title={t('gameHub.losDadosCastigan.playerTypeAi', 'IA')}
+                          >
+                            <Cpu size={12} />
+                            <span>{t('gameHub.losDadosCastigan.aiLabel', 'IA')}</span>
+                          </button>
+                        </div>
                       </div>
                       
                       <div className={styles.playerFieldsRow}>
@@ -1531,10 +1666,13 @@ const DiceGame: React.FC = () => {
               <div className={`${styles.card} ${styles.infoPanel}`}>
                 <div className={styles.gameHeader}>
                   <div className={styles.turnInfo} style={{ borderLeftColor: players[currentPlayerIndex]?.color }}>
-                    <h3>
-                      {t('gameHub.losDadosCastigan.turnOf', 'Turno de: {{name}}', {
-                        name: players[currentPlayerIndex]?.name
-                      })}
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {players[currentPlayerIndex]?.isAi && <Cpu size={18} style={{ opacity: 0.8 }} />}
+                      <span>
+                        {t('gameHub.losDadosCastigan.turnOf', 'Turno de: {{name}}', {
+                          name: players[currentPlayerIndex]?.name
+                        })}
+                      </span>
                     </h3>
                   </div>
                   <div className={styles.roundCounter}>
@@ -1626,10 +1764,13 @@ const DiceGame: React.FC = () => {
             /* COMBINED PANEL: GAME OVER (LEFT & CENTER COLUMN) */
             <div className={`${styles.card} ${styles.gameOverPanel}`}>
               <div className={styles.gameOverSection}>
-                <h2>
-                  {t('gameHub.losDadosCastigan.winnerDeclaration', '🏆 ¡{{name}} ha ganado! 🏆', {
-                    name: gameWinner?.name || ''
-                  })}
+                <h2 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  {gameWinner?.isAi && <Cpu size={24} style={{ opacity: 0.9 }} />}
+                  <span>
+                    {t('gameHub.losDadosCastigan.winnerDeclaration', '🏆 ¡{{name}} ha ganado! 🏆', {
+                      name: gameWinner?.name || ''
+                    })}
+                  </span>
                 </h2>
                 
                 {newRecordSet && (
@@ -1676,7 +1817,12 @@ const DiceGame: React.FC = () => {
                         }`}
                       >
                         <td>{position}º</td>
-                        <td className={styles.playerName}>{player.name}</td>
+                        <td className={styles.playerName}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {player.isAi && <Cpu size={14} style={{ opacity: 0.7 }} />}
+                            <span>{player.name}</span>
+                          </span>
+                        </td>
                         <td>
                           <div
                             className={styles.colorDot}
@@ -1710,9 +1856,14 @@ const DiceGame: React.FC = () => {
 
           <div className={styles.tiebreakPlayground}>
             <h3>
-              {t('gameHub.losDadosCastigan.tiebreakerTurn', 'Turno de desempate: {{name}}', {
-                name: tiebreakQueue[currentTiebreakIndex]?.name
-              })}
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                {tiebreakQueue[currentTiebreakIndex]?.isAi && <Cpu size={18} />}
+                <span>
+                  {t('gameHub.losDadosCastigan.tiebreakerTurn', 'Turno de desempate: {{name}}', {
+                    name: tiebreakQueue[currentTiebreakIndex]?.name
+                  })}
+                </span>
+              </span>
             </h3>
 
             <div className={styles.tableMat}>
@@ -1755,7 +1906,10 @@ const DiceGame: React.FC = () => {
               <ul className={styles.resultsList}>
                 {tiebreakResults.map((res, rIdx) => (
                   <li key={rIdx}>
-                    <span className={styles.resultPlayerName}>{res.player.name}:</span>
+                    <span className={styles.resultPlayerName} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      {res.player.isAi && <Cpu size={12} style={{ opacity: 0.7 }} />}
+                      <span>{res.player.name}:</span>
+                    </span>
                     <strong className={styles.resultScore}>{res.score} pts</strong>
                   </li>
                 ))}
