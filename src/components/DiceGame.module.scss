@@ -653,6 +653,24 @@
   }
 }
 
+.gameOverPanel {
+  grid-column: span 2;
+  animation: fadeIn 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+  border: 1px solid rgba(255, 215, 0, 0.35); // Golden glowing border
+  box-shadow: 0 0 25px rgba(255, 215, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  min-height: 50vh;
+  box-sizing: border-box;
+
+  @media (max-width: 1200px) {
+    grid-column: span 1;
+  }
+}
+
 // --- COMMON TURN/GAME INFO HEADERS ---
 
 .gameHeader {

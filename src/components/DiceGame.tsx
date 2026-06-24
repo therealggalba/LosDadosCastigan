@@ -884,10 +884,11 @@ const DiceGame: React.FC = () => {
       setPlayers(updatedPlayers);
       setRoundScore(0);
       setMessage(t('gameHub.losDadosCastigan.cancelRoundMsg', '¡El diablo!¡Tus puntos totales se han reseteado a 0!.'));
-      setIsRolling(false);
+      setIsRolling(true); // Disable controls during retention
       setTimeout(() => {
+        setIsRolling(false);
         proceedToNextPlayer(updatedPlayers);
-      }, 2000);
+      }, 5000); // 5 seconds retention
       return;
     }
 
@@ -950,7 +951,11 @@ const DiceGame: React.FC = () => {
       player.score -= finalRoundScore;
       player.roundScore = 0;
       setMessage(t('gameHub.losDadosCastigan.bustMsg', '¡Has superado los 3000 puntos! Tu puntuación vuelve a la ronda anterior.'));
-      setTimeout(() => proceedToNextPlayer(updatedPlayers), 2000);
+      setIsRolling(true); // Disable controls during transition
+      setTimeout(() => {
+        setIsRolling(false);
+        proceedToNextPlayer(updatedPlayers);
+      }, 3000);
       return;
     }
 
@@ -965,13 +970,15 @@ const DiceGame: React.FC = () => {
       setMessage(`${player.name} ${t('gameHub.losDadosCastigan.suddenDeathBanner', 'ha alcanzado 3000 puntos. ¡Comienza la muerte súbita!')}`);
       
       setPlayers(updatedPlayers);
+      setIsRolling(true); // Disable controls during transition
       setTimeout(() => {
+        setIsRolling(false);
         const nextRem = [...remaining];
         const nextPlayer = nextRem.shift()!;
         setSuddenDeathPlayers(nextRem);
         setCurrentPlayerIndex(updatedPlayers.indexOf(nextPlayer));
         resetTurnState();
-      }, 3000);
+      }, 4000);
       return;
     }
 
@@ -1031,8 +1038,8 @@ const DiceGame: React.FC = () => {
     } else if (tiebreakers.length === 1) {
       declareWinner(tiebreakers[0]);
     } else {
-      const allTied = [trigger, ...tiebreakers];
-      startTiebreaker(allTied);
+      // Tiebreak only between the players who got 3000 during sudden death (excluding the trigger)
+      startTiebreaker(tiebreakers);
     }
   };
 
@@ -1040,6 +1047,7 @@ const DiceGame: React.FC = () => {
     gameAudio.playSfx('winner');
     setGameOver(true);
     setGameWinner(winner);
+    setStep('game'); // Ensure the game screen displays the final scoreboard and winner announcement
     
     const prevRecord = record;
     if (!prevRecord || roundNumber < prevRecord.round) {
@@ -1089,10 +1097,11 @@ const DiceGame: React.FC = () => {
     const results = [...tiebreakResults, { player, score: result.points }];
     setTiebreakResults(results);
 
-    setIsRolling(false);
+    setIsRolling(true); // Disable inputs during transition timeout
 
     setTimeout(() => {
       if (currentTiebreakIndex + 1 < tiebreakQueue.length) {
+        setIsRolling(false); // Enable for next tiebreak player
         setCurrentTiebreakIndex(prev => prev + 1);
         setDiceValues([]);
       } else {
@@ -1100,11 +1109,14 @@ const DiceGame: React.FC = () => {
         const winners = results.filter(r => r.score === maxScore);
 
         if (winners.length === 1) {
+          setIsRolling(false);
           setTiebreakWinner(winners[0].player);
           declareWinner(winners[0].player);
         } else {
           setMessage(t('gameHub.losDadosCastigan.newTiebreak', '¡Empate en el desempate! Otra ronda...'));
+          setIsRolling(true); // Re-disable controls during nested timeout
           setTimeout(() => {
+            setIsRolling(false); // Enable
             startTiebreaker(winners.map(w => w.player));
             setDiceValues([]);
             setMessage('');
@@ -1274,8 +1286,16 @@ const DiceGame: React.FC = () => {
             <div className={styles.rulesSection}>
               <h4>{t('gameHub.losDadosCastigan.gameplayRulesTitle', 'Reglas de Juego')}</h4>
               <ul>
-                <li><strong>Plantarse:</strong> Solo con acumulados múltiplos de 100.</li>
-                <li><strong>¡Los dados castigan!:</strong> Si tiras y no sale ninguna K o Q, pierdes el acumulado del turno.</li>
+                <li><strong>{t('gameHub.losDadosCastigan.ruleStand', 'Plantarse')}:</strong> {t('gameHub.losDadosCastigan.ruleStandDesc', 'Solo con acumulados múltiplos de 100.')}</li>
+                <li><strong>{t('gameHub.losDadosCastigan.rulePunishment', '¡Los dados castigan!')}:</strong> {t('gameHub.losDadosCastigan.rulePunishmentDesc', 'Si tiras y no sale ninguna K o Q, pierdes el acumulado del turno.')}</li>
+              </ul>
+            </div>
+
+            <div className={styles.rulesSection}>
+              <h4>{t('gameHub.losDadosCastigan.suddenDeathRulesTitle', 'Muerte Súbita')}</h4>
+              <ul>
+                <li><strong>{t('gameHub.losDadosCastigan.rulesSuddenDeathActivationLabel', 'Activación')}:</strong> {t('gameHub.losDadosCastigan.rulesSuddenDeathActivationDesc', 'Al llegar exactamente a 3000 puntos.')}</li>
+                <li><strong>{t('gameHub.losDadosCastigan.rulesSuddenDeathStealLabel', 'Robo de Victoria')}:</strong> {t('gameHub.losDadosCastigan.rulesSuddenDeathStealDesc', 'Si un segundo jugador alcanza los 3000 puntos en su último turno, ese segundo jugador ganará la partida (eliminando al activador original). Si lo consiguen varios, se jugará una ronda de desempate únicamente entre ellos.')}</li>
               </ul>
             </div>
           </div>
@@ -1505,109 +1525,110 @@ const DiceGame: React.FC = () => {
       {step === 'game' && (
         <div className={styles.gameLayout}>
           
-          {/* PANEL 1: INFO DE TIRADA (LEFT COLUMN) */}
-          <div className={`${styles.card} ${styles.infoPanel}`}>
-            <div className={styles.gameHeader}>
-              <div className={styles.turnInfo} style={{ borderLeftColor: players[currentPlayerIndex]?.color }}>
-                <h3>
-                  {t('gameHub.losDadosCastigan.turnOf', 'Turno de: {{name}}', {
-                    name: players[currentPlayerIndex]?.name
-                  })}
-                </h3>
-              </div>
-              <div className={styles.roundCounter}>
-                <span>{t('gameHub.losDadosCastigan.roundCounter', 'Ronda: {{round}}', { round: roundNumber })}</span>
-              </div>
-            </div>
-
-            <div className={styles.roundScoreboard}>
-              <div className={styles.scoreRow}>
-                <span>{t('gameHub.losDadosCastigan.accumulatedScore', 'Acumulado de ronda')}:</span>
-                <strong className={styles.pulsingScore}>{roundScore}</strong>
-              </div>
-              <div className={styles.scoreDetail}>
-                <span>{t('gameHub.losDadosCastigan.savedDiceCount', 'Dados guardados')}: {savedDice.length}</span>
-                <span>{t('gameHub.losDadosCastigan.diceToRollCount', 'Dados por lanzar')}: {5 - (allDiceScored ? 0 : savedDice.length)}</span>
-              </div>
-
-              {suddenDeath && players[currentPlayerIndex] && (
-                <div className={styles.suddenDeathRequiredPoints}>
-                  <span>
-                    {t('gameHub.losDadosCastigan.pointsNeededNotice', 'Debes conseguir {{needed}} puntos para alcanzar los 3000.', {
-                      needed: 3000 - players[currentPlayerIndex].score
-                    })}
-                  </span>
-                </div>
-              )}
-
-              <div className={styles.messageContainer}>
-                <div className={`${styles.actionMessage} ${!message ? styles.hidden : ''}`}>
-                  {message || ''}
-                </div>
-              </div>
-
-              <div className={styles.actions}>
-                {showPlantarse && (
-                  <button onClick={handlePlantarse} className={styles.plantarseBtn}>
-                    {t('gameHub.losDadosCastigan.plantarse', 'Plantarse')}
-                  </button>
-                )}
-
-                {showContinue && (
-                  <button onClick={handleContinuePunishment} className={styles.continueBtn}>
-                    {t('gameHub.losDadosCastigan.continue', 'Continuar')}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* PANEL 2: ACTIVE PLAY AREA (CENTER COLUMN) */}
-          <div className={`${styles.card} ${styles.playPanel}`}>
-            {/* Tapete area (Felt) */}
-            <div className={styles.tableMat}>
-              
-              <div className={styles.diceContainer}>
-                {diceValues.length > 0 ? (
-                  diceValues.map((val, idx) => (
-                    <div
-                      key={idx}
-                      className={`${styles.die} ${scoringFlags[idx] ? styles.highlighted : ''} ${
-                        isRolling ? styles.rolling : ''
-                      }`}
-                      style={{
-                        backgroundColor: players[currentPlayerIndex]?.color,
-                        color: players[currentPlayerIndex]?.textColor
-                      }}
-                    >
-                      {renderDieFace(val)}
-                    </div>
-                  ))
-                ) : (
-                  <div className={styles.placeholderDice}>
-                    <p>{t('gameHub.losDadosCastigan.emptyTable', 'Lanza los dados para comenzar tu turno')}</p>
+          {!gameOver ? (
+            <>
+              {/* PANEL 1: INFO DE TIRADA (LEFT COLUMN) */}
+              <div className={`${styles.card} ${styles.infoPanel}`}>
+                <div className={styles.gameHeader}>
+                  <div className={styles.turnInfo} style={{ borderLeftColor: players[currentPlayerIndex]?.color }}>
+                    <h3>
+                      {t('gameHub.losDadosCastigan.turnOf', 'Turno de: {{name}}', {
+                        name: players[currentPlayerIndex]?.name
+                      })}
+                    </h3>
                   </div>
-                )}
+                  <div className={styles.roundCounter}>
+                    <span>{t('gameHub.losDadosCastigan.roundCounter', 'Ronda: {{round}}', { round: roundNumber })}</span>
+                  </div>
+                </div>
+
+                <div className={styles.roundScoreboard}>
+                  <div className={styles.scoreRow}>
+                    <span>{t('gameHub.losDadosCastigan.accumulatedScore', 'Acumulado de ronda')}:</span>
+                    <strong className={styles.pulsingScore}>{roundScore}</strong>
+                  </div>
+                  <div className={styles.scoreDetail}>
+                    <span>{t('gameHub.losDadosCastigan.savedDiceCount', 'Dados guardados')}: {savedDice.length}</span>
+                    <span>{t('gameHub.losDadosCastigan.diceToRollCount', 'Dados por lanzar')}: {5 - (allDiceScored ? 0 : savedDice.length)}</span>
+                  </div>
+
+                  {suddenDeath && players[currentPlayerIndex] && (
+                    <div className={styles.suddenDeathRequiredPoints}>
+                      <span>
+                        {t('gameHub.losDadosCastigan.pointsNeededNotice', 'Debes conseguir {{needed}} puntos para alcanzar los 3000.', {
+                          needed: 3000 - players[currentPlayerIndex].score
+                        })}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className={styles.messageContainer}>
+                    <div className={`${styles.actionMessage} ${!message ? styles.hidden : ''}`}>
+                      {message || ''}
+                    </div>
+                  </div>
+
+                  <div className={styles.actions}>
+                    {showPlantarse && (
+                      <button onClick={handlePlantarse} disabled={isRolling} className={styles.plantarseBtn}>
+                        {t('gameHub.losDadosCastigan.plantarse', 'Plantarse')}
+                      </button>
+                    )}
+
+                    {showContinue && (
+                      <button onClick={handleContinuePunishment} disabled={isRolling} className={styles.continueBtn}>
+                        {t('gameHub.losDadosCastigan.continue', 'Continuar')}
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              {!gameOver && (
-                <button
-                  onClick={rollDice}
-                  disabled={isRolling || showContinue}
-                  className={styles.rollBtn}
-                >
-                  <Sparkles size={16} />
-                  <span>{t('gameHub.losDadosCastigan.rollDice', 'Lanzar Dados')}</span>
-                </button>
-              )}
-            </div>
+              {/* PANEL 2: ACTIVE PLAY AREA (CENTER COLUMN) */}
+              <div className={`${styles.card} ${styles.playPanel}`}>
+                {/* Tapete area (Felt) */}
+                <div className={styles.tableMat}>
+                  <div className={styles.diceContainer}>
+                    {diceValues.length > 0 ? (
+                      diceValues.map((val, idx) => (
+                        <div
+                          key={idx}
+                          className={`${styles.die} ${scoringFlags[idx] ? styles.highlighted : ''} ${
+                            isRolling ? styles.rolling : ''
+                          }`}
+                          style={{
+                            backgroundColor: players[currentPlayerIndex]?.color,
+                            color: players[currentPlayerIndex]?.textColor
+                          }}
+                        >
+                          {renderDieFace(val)}
+                        </div>
+                      ))
+                    ) : (
+                      <div className={styles.placeholderDice}>
+                        <p>{t('gameHub.losDadosCastigan.emptyTable', 'Lanza los dados para comenzar tu turno')}</p>
+                      </div>
+                    )}
+                  </div>
 
-            {/* Game Over Screen / Declaration */}
-            {gameOver && gameWinner && (
+                  <button
+                    onClick={rollDice}
+                    disabled={isRolling || showContinue}
+                    className={styles.rollBtn}
+                  >
+                    <Sparkles size={16} />
+                    <span>{t('gameHub.losDadosCastigan.rollDice', 'Lanzar Dados')}</span>
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* COMBINED PANEL: GAME OVER (LEFT & CENTER COLUMN) */
+            <div className={`${styles.card} ${styles.gameOverPanel}`}>
               <div className={styles.gameOverSection}>
                 <h2>
                   {t('gameHub.losDadosCastigan.winnerDeclaration', '🏆 ¡{{name}} ha ganado! 🏆', {
-                    name: gameWinner.name
+                    name: gameWinner?.name || ''
                   })}
                 </h2>
                 
@@ -1624,8 +1645,8 @@ const DiceGame: React.FC = () => {
                   <span>{t('gameHub.losDadosCastigan.newGame', 'Nueva Partida')}</span>
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* PANEL 3: SCOREBOARD (RIGHT COLUMN) */}
           <div className={`${styles.card} ${styles.scoresPanel}`}>
